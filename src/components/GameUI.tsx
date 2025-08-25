@@ -1,5 +1,6 @@
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { WeaponType } from "../hooks/useWeaponSystem";
 
 interface GameState {
   blueScore: number;
@@ -11,9 +12,10 @@ interface GameState {
 interface GameUIProps {
   gameState: GameState;
   onTogglePause: () => void;
+  selectedWeapon?: WeaponType;
 }
 
-export const GameUI = ({ gameState, onTogglePause }: GameUIProps) => {
+export const GameUI = ({ gameState, onTogglePause, selectedWeapon = "laser" }: GameUIProps) => {
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
@@ -56,9 +58,22 @@ export const GameUI = ({ gameState, onTogglePause }: GameUIProps) => {
         </Button>
       </Card>
 
-      {/* Controls Help */}
-      <Card className="retro-panel mt-2 px-4 py-2 text-xs text-center text-muted-foreground">
-        Use WASD to move • Capture enemy flags • Defend your flag
+      {/* Weapon selection */}
+      <Card className="retro-panel mt-2 px-4 py-2 text-xs text-center">
+        <div className="flex items-center justify-center gap-2 mb-2">
+          <span className="text-muted-foreground">Weapon:</span>
+          <span className={`font-bold uppercase ${
+            selectedWeapon === "laser" ? "text-primary" :
+            selectedWeapon === "bouncy" ? "text-secondary" :
+            selectedWeapon === "missile" ? "text-destructive" :
+            "text-accent"
+          }`}>
+            {selectedWeapon}
+          </span>
+        </div>
+        <div className="text-muted-foreground">
+          WASD: Move • Left Click: Fire • Scroll/Shift: Change Weapon
+        </div>
       </Card>
     </div>
   );

@@ -1,21 +1,32 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import { Player } from "./Player";
 import { Flag } from "./Flag";
 import { GameUI } from "./GameUI";
+import { useWeaponSystem, WeaponType } from "../hooks/useWeaponSystem";
+import { Laser } from "./weapons/Laser";
+import { Missile } from "./weapons/Missile";
+import { Grenade } from "./weapons/Grenade";
+import { Shrapnel } from "./weapons/Shrapnel";
 
 export const GameField = () => {
   const fieldRef = useRef<HTMLDivElement>(null);
+  const { selectedWeapon, projectiles, fireWeapon, cycleWeapon } = useWeaponSystem();
   const [players, setPlayers] = useState<Array<{
     id: number;
     x: number;
     y: number;
     team: "blue" | "red";
     isControlled: boolean;
+    health: number;
+    maxHealth: number;
+    energy: number;
+    maxEnergy: number;
+    angle: number;
   }>>([
-    { id: 1, x: 100, y: 300, team: "blue" as const, isControlled: true },
-    { id: 2, x: 200, y: 250, team: "blue" as const, isControlled: false },
-    { id: 3, x: 700, y: 300, team: "red" as const, isControlled: false },
-    { id: 4, x: 600, y: 350, team: "red" as const, isControlled: false },
+    { id: 1, x: 100, y: 300, team: "blue" as const, isControlled: true, health: 224, maxHealth: 224, energy: 57, maxEnergy: 57, angle: 0 },
+    { id: 2, x: 200, y: 250, team: "blue" as const, isControlled: false, health: 224, maxHealth: 224, energy: 57, maxEnergy: 57, angle: 0 },
+    { id: 3, x: 700, y: 300, team: "red" as const, isControlled: false, health: 224, maxHealth: 224, energy: 57, maxEnergy: 57, angle: Math.PI },
+    { id: 4, x: 600, y: 350, team: "red" as const, isControlled: false, health: 224, maxHealth: 224, energy: 57, maxEnergy: 57, angle: Math.PI },
   ]);
   
   const [flags, setFlags] = useState<Array<{
@@ -36,11 +47,48 @@ export const GameField = () => {
     isPaused: false,
   });
 
-  // Handle WASD movement for controlled player
+  // Handle mouse and weapon firing
+  const handleMouseClick = useCallback((e: MouseEvent) => {
+    if (gameState.isPaused) return;
+    
+    const controlledPlayer = players.find(p => p.isControlled);
+    if (!controlledPlayer || controlledPlayer.energy < 12) return;
+    
+    const rect = fieldRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    
+    const mouseX = e.clientX - rect.left;
+    const mouseY = e.clientY - rect.top;
+    
+    const angle = Math.atan2(mouseY - controlledPlayer.y, mouseX - controlledPlayer.x);
+    
+    if (e.button === 0) { // Left click - primary laser
+      fireWeapon("laser", controlledPlayer.x, controlledPlayer.y, angle, controlledPlayer.team);
+      
+      // Update player energy and angle
+      setPlayers(prev => prev.map(p => 
+        p.isControlled 
+          ? { ...p, energy: Math.max(0, p.energy - 12), angle }
+          : p
+      ));
+    }
+  }, [gameState.isPaused, players, fireWeapon]);
+
+  // Handle WASD movement and weapon selection
   useEffect(() => {
     const handleKeyPress = (e: KeyboardEvent) => {
       if (gameState.isPaused) return;
       
+      const controlledPlayer = players.find(p => p.isControlled);
+      if (!controlledPlayer) return;
+      
+      // Weapon selection
+      if (e.key === 'Shift') {
+        cycleWeapon("next");
+        return;
+      }
+      
+      // Movement
       setPlayers(prev => prev.map(player => {
         if (!player.isControlled) return player;
         
@@ -60,9 +108,33 @@ export const GameField = () => {
       }));
     };
 
+    const handleWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      cycleWeapon(e.deltaY > 0 ? "next" : "prev");
+    };
+
     window.addEventListener('keydown', handleKeyPress);
-    return () => window.removeEventListener('keydown', handleKeyPress);
-  }, [gameState.isPaused]);
+    window.addEventListener('mousedown', handleMouseClick);
+    window.addEventListener('wheel', handleWheel, { passive: false });
+    
+    return () => {
+      window.removeEventListener('keydown', handleKeyPress);
+      window.removeEventListener('mousedown', handleMouseClick);
+      window.removeEventListener('wheel', handleWheel);
+    };
+  }, [gameState.isPaused, players, handleMouseClick, cycleWeapon]);
+
+  // Energy regeneration
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setPlayers(prev => prev.map(player => ({
+        ...player,
+        energy: Math.min(player.maxEnergy, player.energy + 1)
+      })));
+    }, 100);
+
+    return () => clearInterval(interval);
+  }, []);
 
   // Game timer
   useEffect(() => {
@@ -101,6 +173,7 @@ export const GameField = () => {
       <GameUI 
         gameState={gameState} 
         onTogglePause={togglePause}
+        selectedWeapon={selectedWeapon}
       />
       
       <div 
@@ -119,6 +192,29 @@ export const GameField = () => {
           {/* Center circle */}
           <div className="absolute top-1/2 left-1/2 w-24 h-24 border-2 border-accent/30 rounded-full transform -translate-x-1/2 -translate-y-1/2" />
         </div>
+
+        {/* Render projectiles */}
+        {projectiles.map(projectile => {
+          switch (projectile.type) {
+            case "laser":
+            case "bouncy":
+              return (
+                <Laser
+                  key={projectile.id}
+                  {...projectile}
+                  isPrimary={projectile.type === "laser"}
+                />
+              );
+            case "missile":
+              return <Missile key={projectile.id} {...projectile} />;
+            case "grenade":
+              return <Grenade key={projectile.id} {...projectile} />;
+            case "shrapnel":
+              return <Shrapnel key={projectile.id} {...projectile} />;
+            default:
+              return null;
+          }
+        })}
 
         {/* Render flags */}
         {flags.map(flag => (
